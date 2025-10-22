@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BOL Timer – georapbox/barcode-scanner</title>
+  <script type="module" src="https://unpkg.com/@georapbox/barcode-scanner@latest/dist/barcode-scanner.define.js"></script>
+  <style>
+    :root{ --blue:#00539f; --red:#e41e26; --bg:#f7f9fb }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
+    .wrap{max-width:960px;margin:0 auto;padding:16px}
+    h1{color:var(--red);margin:0 0 10px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,.05);margin:12px 0}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    label{font-weight:800;display:block;margin-bottom:6px}
+    input{padding:12px;border:2px solid var(--blue);border-radius:12px;width:100%}
+    .btn{padding:12px 16px;border-radius:12px;border:2px solid var(--blue);background:var(--blue);color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:#fff;color:var(--blue)}
+    .timer{font-size:36px;font-weight:900;color:var(--red)}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:99}
+    .modal.show{display:flex}
+    .box{background:#fff;padding:16px;border-radius:14px;max-width:640px;width:100%}
+    barcode-scanner{width:100%;height:360px;border:2px solid var(--blue);border-radius:12px;overflow:hidden}
+    .note{background:#fff3cd;border:1px solid #ffe08a;color:#7a5d00;border-radius:8px;padding:8px 10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>BOL Timer – georapbox/barcode-scanner</h1>
+    <p class="note">Živá kamera funguje cez <b>HTTPS</b> alebo <b>localhost</b>. V modale je <code>&lt;barcode-scanner&gt;</code> web component.</p>
+
+    <div class="card">
+      <h3>Údaje</h3>
+      <div class="row">
+        <div style="flex:2 1 280px">
+          <label>BOL / EAN (3+ číslic)</label>
+          <input id="code" placeholder="naskenuj alebo napíš" inputmode="numeric" />
+        </div>
+        <div style="flex:1 1 160px">
+          <label>&nbsp;</label>
+          <button id="scan" class="btn ghost">📷 Skenovať</button>
+        </div>
+        <div style="flex:2 1 280px">
+          <label>Meno</label>
+          <input id="name" placeholder="napr. Jana K." />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="start" class="btn">▶ Štart</button>
+        <button id="pause" class="btn ghost" disabled>⏸ Pauza</button>
+        <button id="resume" class="btn" disabled>⏵ Pokračovať</button>
+        <button id="stop" class="btn" style="background:#e41e26;border-color:#e41e26" disabled>⏹ Stop</button>
+      </div>
+      <div id="active" class="row" style="justify-content:space-between;margin-top:10px;display:none">
+        <div><b id="meta">-</b></div>
+        <div class="timer" id="timer">00:00:00</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Tabuľka</h3>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Kód</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Meno</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Štart</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Koniec</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Čistý čas</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Pauzy</th><th style="text-align:left;border-bottom:2px solid #00539f;padding:6px">Zostalo</th></tr></thead>
+        <tbody id="tbl"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Scanner modal -->
+  <div id="scannerModal" class="modal">
+    <div class="box">
+      <h3>📷 Skenuj čiarový kód</h3>
+      <barcode-scanner id="scanner"
+        facing-mode="environment"
+        detection-mode="continuous"
+        formats="ean-13 ean-8 upc-a upc-e code-128 itf code-39"
+        torch="auto">
+      </barcode-scanner>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button id="closeScanner" class="btn ghost">Zavrieť</button>
+      </div>
+      <div id="scanOut" class="note" style="margin-top:8px; display:none"></div>
+    </div>
+  </div>
+
+  <script>
+    const $=s=>document.querySelector(s);
+    const fmt=n=>String(n).padStart(2,'0');
+    const fmtHMS=ms=>{const s=Math.floor(ms/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return fmt(h)+':'+fmt(m)+':'+fmt(sec);};
+    const KEY='bol_georapbox_v1'; let DB=JSON.parse(localStorage.getItem(KEY)||'{"tasks":[]}'); const save=()=>localStorage.setItem(KEY, JSON.stringify(DB));
+
+    // Timer state
+    let active=null, interval=null;
+    function setBtns(run){ $('#start').disabled=!!active; $('#pause').disabled=!active||!run; $('#resume').disabled=!active||run; $('#stop').disabled=!active; $('#active').style.display = active?'flex':'none'; }
+    function tick(){ if(!active) return; const now=Date.now(); const paused = active.running ? active.pausedAccumMs : (active.pausedAccumMs + (now - (active.pauseStartMs||now))); $('#timer').textContent = fmtHMS(Math.max(0, now - active.startMs - paused)); }
+
+    // Start/Pause/Resume/Stop
+    $('#start').onclick=()=>{ const code=$('#code').value.trim(), name=$('#name').value.trim(); if(!code||!name){ alert('Zadaj kód a meno.'); return; } active={ id:Date.now().toString(36), code, name, startMs:Date.now(), pausedAccumMs:0, pauseStartMs:null, running:true, pauses:0 }; $('#meta').textContent=code+' • '+name; setBtns(true); if(interval) clearInterval(interval); interval=setInterval(tick,500); tick(); };
+    $('#pause').onclick=()=>{ if(!active||!active.running) return; active.running=false; active.pauseStartMs=Date.now(); active.pauses++; setBtns(false); tick(); };
+    $('#resume').onclick=()=>{ if(!active||active.running) return; active.running=true; if(active.pauseStartMs){ active.pausedAccumMs += Date.now()-active.pauseStartMs; active.pauseStartMs=null; } setBtns(true); tick(); };
+    $('#stop').onclick=()=>{ if(!active) return; const leftover = prompt('Zostalo do skladu (kartóny):','0'); const n = Math.max(0, parseInt(leftover||'0',10)||0); const now=Date.now(); const paused = active.running ? active.pausedAccumMs : (active.pausedAccumMs + (now - (active.pauseStartMs||now))); const clean = Math.max(0, now - active.startMs - paused); DB.tasks.push({id:active.id, code:active.code, name:active.name, startISO:new Date(active.startMs).toISOString(), endISO:new Date(now).toISOString(), cleanMs:clean, pauses:active.pauses, leftoverCartons:n}); save(); active=null; if(interval){clearInterval(interval); interval=null;} setBtns(false); $('#timer').textContent='00:00:00'; $('#code').value=''; render(); };
+
+    // Table
+    function render(){ $('#tbl').innerHTML = DB.tasks.slice().reverse().map(r=>`<tr><td>${r.code}</td><td>${r.name}</td><td>${new Date(r.startISO).toLocaleString()}</td><td>${new Date(r.endISO).toLocaleString()}</td><td style="color:#e41e26;font-weight:800">${fmtHMS(r.cleanMs)}</td><td>${r.pauses}</td><td>${r.leftoverCartons||0}</td></tr>`).join(''); }
+    render();
+
+    // Scanner modal handling
+    const modal=$('#scannerModal'), scanner=$('#scanner'), scanOut=$('#scanOut');
+    $('#scan').onclick=()=>{ modal.classList.add('show'); try{ scanner.start(); }catch{} };
+    $('#closeScanner').onclick=()=>{ try{ scanner.stop(); }catch{} modal.classList.remove('show'); };
+
+    // Listen to events from component
+    scanner.addEventListener('scan', (ev)=>{
+      const { rawValue, format } = ev.detail || {};
+      scanOut.textContent = `Naskenované: ${rawValue} • Formát: ${format}`;
+      scanOut.style.display='block';
+      $('#code').value = (rawValue||'').toString();
+      // auto close after short delay
+      setTimeout(()=>{ try{ scanner.stop(); }catch{} modal.classList.remove('show'); }, 600);
+    });
+    scanner.addEventListener('error', (ev)=>{
+      // non-fatal errors prichádzajú často, len zobrazíme poslednú
+      scanOut.textContent = 'Chyba: ' + (ev.detail?.message||ev.message||ev);
+      scanOut.style.display='block';
+    });
+  </script>
+</body>
+</html>
