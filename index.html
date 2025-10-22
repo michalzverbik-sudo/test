@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BOL Timer – ZXing‑C++ (WASM) skener</title>
+  <style>
+    :root{--blue:#00539f;--red:#e41e26;--bg:#f7f9fb}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
+    .wrap{max-width:920px;margin:0 auto;padding:16px}
+    h1{margin:0 0 10px;color:var(--red)} .muted{color:#64748b}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.04);padding:14px;margin:12px 0}
+    .btn{padding:12px 16px;border-radius:12px;border:2px solid #00539f;background:#00539f;color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:#fff;color:#00539f}
+    input{padding:12px;border:2px solid #00539f;border-radius:12px;width:100%}
+    video,canvas{width:100%;max-height:50vh;background:#000;border-radius:10px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .note{background:#fff3cd;border:1px solid #ffe08a;padding:8px;border-radius:8px;color:#7a5d00}
+    .ok{color:#16a34a;font-weight:800}
+    .err{color:#dc2626;font-weight:800}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-weight:800}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>BOL Timer – ZXing‑C++ (WASM)</h1>
+    <p class="note">Na živé skenovanie potrebuješ súbory <code>zxing_reader.js</code> a <code>zxing_reader.wasm</code> v priečinku <code>/zxing</code> na tom istom hostingu.
+      Ak chýbajú, uvidíš upozornenie nižšie. HTTPS/localhost je povinné kvôli kamere.</p>
+
+    <div class="card">
+      <h3>Skener</h3>
+      <div id="status" class="muted">Kontrolujem ZXing‑WASM…</div>
+      <div class="row" style="margin:8px 0">
+        <button id="preflight" class="btn ghost">Povoliť kameru</button>
+        <button id="start" class="btn">▶ Spustiť skener</button>
+        <button id="stop" class="btn ghost" disabled>✖ Zastaviť</button>
+      </div>
+      <video id="video" playsinline muted></video>
+      <canvas id="canvas" hidden></canvas>
+      <div style="margin-top:8px">
+        <span class="pill">Zachytené</span>
+        <div id="out" class="muted">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Úloha</h3>
+      <div class="row">
+        <input id="code" placeholder="BOL / EAN (naskenuj alebo napíš)">
+        <input id="name" placeholder="Meno zamestnanca">
+        <button id="use" class="btn ghost">Použiť výsledok</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $=s=>document.querySelector(s);
+    const status=$('#status'), out=$('#out');
+    const video=$('#video'), canvas=$('#canvas');
+    const state={ mod:null, reader:null, running:false, raf:0 };
+
+    // Check presence of WASM files
+    fetch('./zxing/zxing_reader.js', { method:'HEAD' }).then(()=>{
+      status.innerHTML='ZXing‑WASM <span class="ok">nájdený</span>.';
+    }).catch(()=>{
+      status.innerHTML='ZXing‑WASM <span class="err">chýba</span>. Do priečinka <code>/zxing</code> nahraj <code>zxing_reader.js</code> a <code>zxing_reader.wasm</code> (z projektu ZXing‑C++ WASM).';
+    });
+
+    // Preflight
+    $('#preflight').onclick = async ()=>{
+      try{
+        const s=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+        s.getTracks().forEach(t=>t.stop());
+        alert('Kamera povolená – môžeš spustiť skener.');
+      }catch(e){ alert('Povolenie kamery zlyhalo: '+(e.message||e)); }
+    };
+
+    // Load ZXing module
+    async function loadZXing(){
+      if (state.mod) return state.mod;
+      await import('./zxing/zxing_reader.js'); // defines global ZXing
+      if (!('ZXing' in window)) throw new Error('ZXing modul sa nenačítal');
+      // init with path to wasm
+      const mod = await window.ZXing({ locateFile: (path)=> './zxing/'+path });
+      state.mod = mod;
+      return mod;
+    }
+
+    async function start(){
+      if (state.running) return;
+      const mod = await loadZXing();
+      const constraints = { video:{ facingMode:'environment' }, audio:false };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream; await video.play();
+      state.running = true;
+      tick();
+    }
+
+    async function stop(){
+      state.running = false;
+      cancelAnimationFrame(state.raf);
+      try{ video.srcObject?.getTracks().forEach(t=>t.stop()); }catch{}
+    }
+
+    async function tick(){
+      if(!state.running) return;
+      const ctx = canvas.getContext('2d', { willReadFrequently:true });
+      const w = canvas.width = video.videoWidth || 640;
+      const h = canvas.height = video.videoHeight || 360;
+      ctx.drawImage(video, 0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+
+      try{
+        // ZXing-C++ expects grayscale/rgba; we pass RGBA buffer
+        const luminances = img.data; // Uint8ClampedArray RGBA
+        // Create heap for ZXing
+        const size = luminances.length * luminances.BYTES_PER_ELEMENT;
+        const ptr = state.mod._malloc(size);
+        state.mod.HEAPU8.set(luminances, ptr);
+        const resultPtr = state.mod.readBarcodeFromPixmap(ptr, w, h, true, false); // (data, w, h, tryHarder, isRGB)
+        if (resultPtr){
+          const result = state.mod.getBarcodeText(resultPtr);
+          out.textContent = result;
+          // free result
+          state.mod.destroyBarcode(resultPtr);
+        }
+        state.mod._free(ptr);
+      }catch(e){
+        // ignore per frame errors
+      }
+
+      state.raf = requestAnimationFrame(tick);
+    }
+
+    $('#start').onclick = async ()=>{
+      try{ await start(); $('#start').disabled=true; $('#stop').disabled=false; }catch(e){ alert('Štart skenera zlyhal: '+(e.message||e)); }
+    };
+    $('#stop').onclick = async ()=>{ await stop(); $('#start').disabled=false; $('#stop').disabled=true; };
+
+    // Use result -> fill input
+    $('#use').onclick = ()=>{ $('#code').value = out.textContent.replace(/\s+/g,'').trim(); };
+  </script>
+</body>
+</html>
