@@ -1,0 +1,9 @@
+{
+  "name": "BOL Timer – ZXing‑WASM (offline)",
+  "short_name": "BOL Timer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7f9fb",
+  "theme_color": "#00539f",
+  "icons": []
+}
