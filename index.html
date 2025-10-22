@@ -1,0 +1,210 @@
+
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BOL Timer – Tesco (offline)</title>
+  <meta name="theme-color" content="#00539f">
+  <link rel="manifest" href="./manifest.json">
+  <style>
+:root{--tesco-blue:#00539f;--tesco-red:#e41e26;--bg:#f8fafc;--card:#ffffff;--muted:#6b7280;--radius:16px}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:#0f172a}
+.wrap{max-width:1000px;margin:0 auto;padding:18px}
+h1{margin:0 0 6px;color:var(--tesco-blue);font-weight:900;letter-spacing:.2px}
+h2{margin:0 0 10px;color:#111827}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid #e5e7eb;border-radius:var(--radius);box-shadow:0 8px 22px rgba(0,0,0,.04);padding:16px;margin:12px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+label{font-weight:800;display:block;margin-bottom:6px}
+input,select{padding:12px;border:2px solid var(--tesco-blue);border-radius:12px;width:100%;font-size:16px}
+.btn{padding:12px 16px;border-radius:12px;border:2px solid var(--tesco-blue);background:var(--tesco-blue);color:#fff;font-weight:800;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--tesco-blue)}
+.btn.danger{background:var(--tesco-red);border-color:var(--tesco-red)}
+.btn.gray{background:#fff;color:#111;border-color:#e5e7eb}
+.timer{font-size:40px;font-weight:900;color:var(--tesco-red)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:9px;border-bottom:1px solid #e5e7eb}
+th{border-bottom:2px solid var(--tesco-blue);text-align:left;background:#f1f5f9}
+/* camera modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal.show{display:flex}
+.modal .box{background:#fff;border-radius:16px;max-width:420px;width:100%;padding:14px;border:1px solid #e5e7eb}
+.video-wrap{position:relative}
+video{width:100%;background:#000;border-radius:12px;max-height:260px}
+canvas{display:none}
+.badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-weight:800}
+.note{background:#fff3cd;border:1px solid #ffe08a;color:#7a5d00;border-radius:8px;padding:8px 10px}
+footer{margin-top:24px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>BOL Timer – Tesco</h1>
+    <p class="muted">Skenovanie BOL/EAN (ZXing‑WASM, offline) • čas: Štart/Pauza/Pokračovať/Stop • po Stop: Zostalo (kartóny)</p>
+
+    <div class="card">
+      <h2>Údaje</h2>
+      <div class="row">
+        <div style="flex:2 1 260px">
+          <label>BOL / EAN</label>
+          <input id="code" placeholder="naskenuj alebo napíš" inputmode="numeric" autocomplete="off" />
+        </div>
+        <div style="flex:1 1 160px">
+          <label>&nbsp;</label>
+          <button id="scan" class="btn ghost">📷 Kamera</button>
+        </div>
+        <div style="flex:2 1 260px">
+          <label>Meno zamestnanca</label>
+          <input id="name" placeholder="napr. Jana K." autocomplete="name" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="start" class="btn">▶ Štart</button>
+        <button id="pause" class="btn ghost" disabled>⏸ Pauza</button>
+        <button id="resume" class="btn" disabled>⏵ Pokračovať</button>
+        <button id="stop" class="btn danger" disabled>⏹ Stop</button>
+      </div>
+
+      <div id="active" class="row" style="justify-content:space-between;margin-top:10px;display:none">
+        <div><b id="meta">-</b></div>
+        <div class="timer" id="timer">00:00:00</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Dnešné záznamy</h2>
+      <table>
+        <thead><tr><th>Kód</th><th>Meno</th><th>Štart</th><th>Koniec</th><th>Čistý čas</th><th>Pauzy</th><th>Zostalo</th></tr></thead>
+        <tbody id="tbl"></tbody>
+      </table>
+      <p class="note">Správa a export záznamov je v <b>admin</b> sekcii: <a href="./admin.html">admin.html</a></p>
+    </div>
+
+    <footer>© Tesco – interný nástroj. Dáta sa ukladajú lokálne v prehliadači zariadenia.</footer>
+  </div>
+
+  <!-- Kamera – menší modal, štart až po kliknutí, auto-stop po úspešnom skene -->
+  <div id="camModal" class="modal">
+    <div class="box">
+      <h3>📷 Skenovanie</h3>
+      <div class="video-wrap">
+        <video id="video" playsinline muted></video>
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button id="closeCam" class="btn gray">Zavrieť</button>
+      </div>
+      <div id="scanMsg" class="note" style="margin-top:8px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- ZXing offline (IIFE) -->
+  <script src="./zxing/index.js"></script>
+  <script>
+    const $=s=>document.querySelector(s);
+    const KEY='bol_timer_pro_v1'; let DB=JSON.parse(localStorage.getItem(KEY)||'{"tasks":[]}');
+    const save=()=>localStorage.setItem(KEY, JSON.stringify(DB));
+    const fmt=n=>String(n).padStart(2,'0');
+    const fmtHMS=ms=>{const s=Math.floor(ms/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return fmt(h)+':'+fmt(m)+':'+fmt(sec);};
+
+    // Timer
+    let active=null, interval=null;
+    function setBtns(run){ document.getElementById('start').disabled=!!active; document.getElementById('pause').disabled=!active||!run; document.getElementById('resume').disabled=!active||run; document.getElementById('stop').disabled=!active; document.getElementById('active').style.display = active?'flex':'none'; }
+    function tick(){ if(!active) return; const now=Date.now(); const paused = active.running ? active.pausedAccumMs : (active.pausedAccumMs + (now - (active.pauseStartMs||now))); document.getElementById('timer').textContent = fmtHMS(Math.max(0, now - active.startMs - paused)); }
+    function render(){
+      document.getElementById('tbl').innerHTML = DB.tasks.filter(t=>t.startISO.slice(0,10)===new Date().toISOString().slice(0,10))
+        .sort((a,b)=>new Date(a.startISO)-new Date(b.startISO))
+        .map(r=>'<tr><td>'+r.code+'</td><td>'+r.name+'</td><td>'+new Date(r.startISO).toLocaleString('sk-SK')+'</td><td>'+new Date(r.endISO).toLocaleString('sk-SK')+'</td><td style="color:var(--tesco-red);font-weight:800">'+fmtHMS(r.cleanMs)+'</td><td>'+r.pauses+'</td><td>'+(r.leftoverCartons||0)+'</td></tr>').join('');
+    }
+
+    document.getElementById('start').onclick=()=>{ const code=document.getElementById('code').value.trim(), name=document.getElementById('name').value.trim(); if(!code||!name) return alert('Zadaj kód a meno.'); active={ id:Date.now().toString(36), code, name, startMs:Date.now(), pausedAccumMs:0, pauseStartMs:null, running:true, pauses:0 }; document.getElementById('meta').textContent=code+' • '+name; setBtns(true); if(interval) clearInterval(interval); interval=setInterval(tick,500); tick(); };
+    document.getElementById('pause').onclick=()=>{ if(!active||!active.running) return; active.running=false; active.pauseStartMs=Date.now(); active.pauses++; setBtns(false); tick(); };
+    document.getElementById('resume').onclick=()=>{ if(!active||active.running) return; active.running=true; if(active.pauseStartMs){ active.pausedAccumMs += Date.now()-active.pauseStartMs; active.pauseStartMs=null; } setBtns(true); tick(); };
+    document.getElementById('stop').onclick=()=>{ if(!active) return; const leftover = prompt('Zostalo do skladu (kartóny):','0'); const n = Math.max(0, parseInt(leftover||'0',10)||0); const now=Date.now(); const paused = active.running ? active.pausedAccumMs : (active.pausedAccumMs + (now - (active.pauseStartMs||now))); const clean = Math.max(0, now - active.startMs - paused); DB.tasks.push({id:active.id, code:active.code, name:active.name, startISO:new Date(active.startMs).toISOString(), endISO:new Date(now).toISOString(), cleanMs:clean, pauses:active.pauses, leftoverCartons:n}); save(); active=null; if(interval){clearInterval(interval); interval=null;} setBtns(false); document.getElementById('timer').textContent='00:00:00'; document.getElementById('code').value=''; render(); };
+
+    // GS1‑128 parser
+    function parseGS1(text){
+      if(!text) return null;
+      const FNC1 = String.fromCharCode(29);
+      const s = text.replace(/\u001D/g, FNC1);
+      const parts=[];
+      let i=0;
+      while(i<s.length){
+        if(s[i]==='('){
+          const close=s.indexOf(')', i);
+          if(close>i){
+            const ai=s.slice(i+1, close);
+            i=close+1;
+            let val='';
+            while(i<s.length && s[i]!=='('){ val+=s[i++]; }
+            parts.push([ai,val]);
+            continue;
+          }
+        }
+        const ai2=s.slice(i,i+2);
+        if(/\d{2}/.test(ai2)){
+          i+=2;
+          let val='';
+          const fixed={'01':14,'15':6}[ai2];
+          if(fixed){ val=s.slice(i,i+fixed); i+=fixed; }
+          else { while(i<s.length && s[i]!==FNC1){ val+=s[i++]; } if(s[i]===FNC1) i++; }
+          parts.push([ai2,val]); continue;
+        }
+        i++;
+      }
+      const out={};
+      for(const [ai,val] of parts){
+        if(ai==='01') out.gtin=val;
+        else if(ai==='10') out.lot=val;
+        else if(ai==='15') out.expiry=val;
+        else if(ai==='37') out.count=val;
+      }
+      return Object.keys(out).length?out:null;
+    }
+
+    // Camera modal controls
+    const modal=document.getElementById('camModal'), scanMsg=document.getElementById('scanMsg'), video=document.getElementById('video'), canvas=document.getElementById('canvas');
+    function ZX(){ return window.ZXingWASM; }
+    async function ensureCam(){ if (video.srcObject) return; const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false }); video.srcObject = s; await video.play(); }
+    async function stopCam(){ try{ video.srcObject && video.srcObject.getTracks().forEach(t=>t.stop()); }catch(e){} video.srcObject=null; }
+
+    let scanning=false, raf=0;
+    async function startScan(){ if(scanning) return; if(!window.ZXingWASM) return alert('ZXing nie je načítaný.'); scanning=true; scanMsg.style.display='none'; await ensureCam(); modal.classList.add('show'); loop(); }
+    async function loop(){
+      if(!scanning) return;
+      const w = canvas.width = Math.max(320, video.videoWidth||320);
+      const h = canvas.height = Math.max(180, video.videoHeight||180);
+      const ctx = canvas.getContext('2d', { willReadFrequently:true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+      try {
+        const res = await ZX().readBarcodes(img, { tryHarder:true, formats:["EAN-13","EAN-8","UPC-A","UPC-E","Code128","ITF","Code39"], maxNumberOfSymbols:1 });
+        if (Array.isArray(res) && res[0] && res[0].text) {
+          const raw = res[0].text.trim();
+          const gs1 = parseGS1(raw);
+          let val = raw.replace(/\D/g,'');
+          if(gs1 && gs1.gtin) val = gs1.gtin;
+          document.getElementById('code').value = val;
+          scanMsg.textContent = 'Nájdené: '+val+' ('+(res[0].format||'')+')';
+          scanMsg.style.display='block';
+          scanning=false; await stopCam(); modal.classList.remove('show');
+          return;
+        }
+      } catch(e) { /* ignore per frame */ }
+      raf = requestAnimationFrame(loop);
+    }
+    document.getElementById('scan').onclick = ()=>{
+      if (!(location.protocol.startsWith('https') || location.hostname==='localhost')) { alert('Kamera vyžaduje HTTPS alebo localhost.'); return; }
+      startScan();
+    };
+    document.getElementById('closeCam').onclick = async ()=>{ scanning=false; cancelAnimationFrame(raf); await stopCam(); modal.classList.remove('show'); };
+    window.addEventListener('pagehide', async ()=>{ scanning=false; cancelAnimationFrame(raf); await stopCam(); });
+
+    render();
+    if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  </script>
+</body>
+</html>
