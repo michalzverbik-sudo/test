@@ -1,0 +1,9 @@
+{
+  "name": "BOL Timer – Tesco",
+  "short_name": "BOL Timer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#00539f",
+  "icons": []
+}
