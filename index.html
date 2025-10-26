@@ -2,11 +2,16 @@
 <html lang="sk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>BOL Timer – AI Scanner (PHP backend)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BOL Timer – offline</title>
+
   <link rel="stylesheet" href="css/styles.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- Lokálne knižnice (pridané!) -->
+  <script src="libs/zxing.min.js"></script>
+  <script src="libs/tesseract.min.js"></script>
+
+  <!-- Tvoja aplikácia -->
   <script defer type="module" src="js/app_php.js"></script>
 </head>
 <body>
