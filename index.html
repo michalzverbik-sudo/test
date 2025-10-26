@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BOL Timer – AI Scanner (PHP backend)</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script defer type="module" src="js/app_php.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>BOL Timer – AI Scanner</h1>
+    <div class="top-actions">
+      <a class="btn ghost" href="api/export_xls.php">⬇️ Export Excel (.xls)</a>
+      <button id="btnAdmin" class="btn">Admin</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Skener (AI + viac formátov)</h2>
+      <p class="muted">Podporované: EAN-13/8, UPC-A/E, Code128/GS1-128, ITF-14, Code39. Keď čiarový kód zlyhá, OCR načíta čísla pod kódom.</p>
+      <div class="controls">
+        <button id="btnLive" class="btn">▶ Živá kamera</button>
+        <button id="btnStopLive" class="btn ghost" style="display:none">✖ Zastaviť kameru</button>
+        <button id="btnFlip" class="btn ghost" style="display:none">🔁 Prepnúť kameru</button>
+        <button id="btnPhoto" class="btn ghost">📸 Foto sken</button>
+      </div>
+      <div id="secureWarn" class="warn" style="display:none">⚠️ Živá kamera potrebuje <b>HTTPS</b> alebo <b>localhost</b>.</div>
+      <div id="liveWrap" class="live-wrap" style="display:none">
+        <video id="video" autoplay muted playsinline></video>
+        <div class="overlay"><div id="detBadge" class="badge" style="display:none"></div></div>
+      </div>
+      <div class="row mt">
+        <input id="inpCode" class="input" placeholder="Naskenuj/zadaj kód..." />
+        <button id="btnClear" class="btn ghost">🧹 Vymazať</button>
+      </div>
+      <div class="muted" id="meta">Formát: — • Zdroj: —</div>
+    </section>
+
+    <section class="card">
+      <h2>Úloha</h2>
+      <div class="row">
+        <div class="col">
+          <label>Meno zamestnanca</label>
+          <input id="inpName" class="input" placeholder="napr. Jana K." />
+        </div>
+        <div class="col">
+          <label>Zostalo (kartóny) – zadáva sa pri Stop</label>
+          <input disabled class="input" value="-" />
+        </div>
+      </div>
+      <div class="controls mt">
+        <button id="btnStart" class="btn">▶ Štart</button>
+        <button id="btnPause" class="btn ghost" style="display:none">⏸ Pauza</button>
+        <button id="btnResume" class="btn" style="display:none">⏵ Pokračovať</button>
+        <button id="btnStop" class="btn danger" style="display:none">⏹ Stop</button>
+      </div>
+      <div id="activeBox" class="active-box" style="display:none">
+        <div>
+          <div class="muted">Aktívna úloha</div>
+          <div id="lblMeta" class="meta-strong">-</div>
+        </div>
+        <div class="timer">
+          <div id="lblTimer" class="big">00:00:00</div>
+          <div class="muted">Čistý čas</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row space-between">
+        <h2>Záznamy (serverový súbor)</h2>
+        <div class="row">
+          <button id="btnReload" class="btn ghost">↻ Načítať znova</button>
+          <button id="btnExportCSV" class="btn ghost">Export CSV (zobrazené)</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Kód</th><th>Meno</th><th>Štart</th><th>Koniec</th><th>Čistý čas</th><th>Pauzy</th><th>Zostalo</th></tr></thead>
+          <tbody id="tbl"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Admin modal -->
+  <div id="adminModal" class="modal">
+    <div class="modal-inner">
+      <h3>Admin</h3>
+      <div class="row">
+        <button id="btnSyncNow" class="btn">↥ Načítať zo súboru</button>
+        <button id="btnClearAll" class="btn danger">Vyprázdniť súbor</button>
+        <button id="btnCloseAdmin" class="btn ghost">Zavrieť</button>
+      </div>
+      <div class="table-wrap mt">
+        <table>
+          <thead><tr><th>Kód</th><th>Meno</th><th>Start</th><th>End</th><th>Čas</th><th>Pauzy</th><th>Zostalo</th></tr></thead>
+          <tbody id="tblAdmin"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="leftModal" class="modal">
+    <div class="modal-inner small">
+      <h3>Zostalo do skladu (kartóny)</h3>
+      <div class="row">
+        <input id="inpLeft" class="input" type="number" min="0" step="1" value="0" />
+        <button id="btnLeftSave" class="btn">Uložiť</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="beep"><source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAACABYAAAABAQAA" type="audio/wav"></audio>
+</body>
+</html>
