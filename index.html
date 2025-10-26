@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BOL Timer – Offline ZXing WASM verzia</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="libs/index.js"></script>
+  <script defer type="module" src="js/app_php.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>BOL Timer – Offline (ZXing WASM)</h1>
+    <div class="top-actions">
+      <a class="btn ghost" href="api/export_xls.php">⬇️ Export Excel (.xls)</a>
+      <button id="btnAdmin" class="btn">Admin</button>
+    </div>
+  </header>
+  <main class="container">
+    <section class="card">
+      <h2>Skener</h2>
+      <p class="muted">Aplikácia používa tvoje ZXing súbory (index.js + zxing_reader.wasm).</p>
+      <div class="controls">
+        <button id="btnLive" class="btn">▶ Živá kamera</button>
+        <button id="btnStopLive" class="btn ghost" style="display:none">✖ Stop kamera</button>
+        <button id="btnFlip" class="btn ghost" style="display:none">🔁 Prepnúť kameru</button>
+      </div>
+      <div id="liveWrap" class="live-wrap" style="display:none">
+        <video id="video" autoplay muted playsinline></video>
+      </div>
+      <div class="row mt">
+        <input id="inpCode" class="input" placeholder="Naskenuj alebo zadaj kód..." />
+        <button id="btnClear" class="btn ghost">🧹 Vymazať</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Úloha</h2>
+      <div class="row">
+        <div class="col"><label>Meno zamestnanca</label><input id="inpName" class="input" /></div>
+        <div class="col"><label>Zostalo (kartóny)</label><input disabled class="input" value="-" /></div>
+      </div>
+      <div class="controls mt">
+        <button id="btnStart" class="btn">▶ Štart</button>
+        <button id="btnPause" class="btn ghost" style="display:none">⏸ Pauza</button>
+        <button id="btnResume" class="btn" style="display:none">⏵ Pokračovať</button>
+        <button id="btnStop" class="btn danger" style="display:none">⏹ Stop</button>
+      </div>
+      <div id="activeBox" class="active-box" style="display:none">
+        <div><div class="muted">Aktívna úloha</div><div id="lblMeta" class="meta-strong">-</div></div>
+        <div class="timer"><div id="lblTimer" class="big">00:00:00</div></div>
+      </div>
+    </section>
+  </main>
+  <audio id="beep"><source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAACABYAAAABAQAA" type="audio/wav"></audio>
+</body>
+</html>
